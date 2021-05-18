@@ -1,0 +1,139 @@
+---
+version: "2"
+services:
+    bazarr:
+        image: linuxserver/bazarr:version-v0.9.5
+        container_name: bazarr
+        restart: unless-stopped
+        environment:
+            - UMASK_SET=022 # Control permissions of files and directories created by Bazarr
+            - TZ=America/Argentina/Buenos_Aires # Specify a timezone to use EG Europe/London.
+            - PUID=1000 # ID of user to take ownership of application/files
+            - PGID=1000 # GID of user to take ownership of application/files
+        volumes:
+            - ${STORAGE}/series:/tv # Location of your TV Shows
+            - ${STORAGE}/peliculas:/movies # Location of your movies
+            - ./config/bazarr:/config # Bazarr data
+        ports:
+            - 6767:6767/tcp # Allows HTTP access to the internal webserver.
+
+    jackett:
+        image: ghcr.io/linuxserver/jackett
+        container_name: jackett
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=America/Argentina/Buenos_Aires
+            - AUTO_UPDATE=true #optional
+            #- RUN_OPTS=<run options here> #optional
+        volumes:
+            - ./config/jackett:/config
+            - ${STORAGE}/torrents/blackhole:/downloads
+        ports:
+            - 9117:9117
+        restart: unless-stopped
+
+    lidarr:
+        image: ghcr.io/linuxserver/lidarr
+        container_name: lidarr
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=America/Argentina/Buenos_Aires
+        volumes:
+            - ./config/lidarr:/config
+            - ${STORAGE}/musica:/music
+            - ${STORAGE}/torrents:/downloads
+        ports:
+            - 8686:8686
+        restart: unless-stopped
+
+    radarr:
+        image: linuxserver/radarr:version-3.1.1.4954
+        container_name: radarr
+        restart: unless-stopped
+        environment:
+            - UMASK_SET=022 # control permissions of files and directories created by Radarr
+            - TZ=America/Argentina/Buenos_aires # Specify a timezone to use EG Europe/London, this is required for Radarr
+            - PUID=1000 # for UserID
+            - PGID=1000 # for GroupID
+        volumes:
+            - ${STORAGE}/peliculas:/movies # Location of Movie library on disk (See note in Application setup)
+            - ${STORAGE}/torrents:/downloads # Location of download managers output directory (See note in Application setup)
+            - ./config/radarr:/config # Database and Radarr configs
+        ports:
+            - 7878:7878/tcp # The port for the Radarr webinterface
+
+    sonarr:
+        image: linuxserver/sonarr:version-3.0.6.1196
+        container_name: sonarr
+        restart: unless-stopped
+        environment:
+            - TZ=America/Argentina/Buenos_Aires # Specify a timezone to use
+            - PUID=1000 # User ID to run as
+            - PGID=1000 # Group ID to run as
+        volumes:
+            - ${STORAGE}/series:/data # Location of all your media
+            - .config/sonarr:/config # Contains all relevant configuration files.
+            - ${STORAGE}/torrents:/downloads
+        ports:
+            - 8989:8989/tcp # Web UI
+
+    plex:
+        image: ghcr.io/linuxserver/plex
+        container_name: plex
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - VERSION=docker
+        volumes:
+            - ./config/plex/Plex Media Server:/config
+            - ${STORAGE}/peliculas:/media/movies
+            - ${STORAGE}/series:/media/series
+            - ${STORAGE}/tmp:/tmp
+            - ${STORAGE}/Compartida:/media/compartida
+        restart: unless-stopped
+        networks:
+            lan:
+            ipv4_address: 192.168.0.80
+
+    transmission:
+        image : ghcr.io/linuxserver/transmission
+        container_name: transmission
+        volumes:
+            - ./config/transmission:/config
+            - ${STORAGE}/torrents:/downloads
+        ports:
+            - 9091:9091
+            - 51413:51413
+            - 51413:51413/udp
+        expose:
+            - 9091
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=America/Argentina
+        restart: unless-stopped
+
+    telegrambot:
+        image: pablokbs/pelade-transmission-bot
+        container_name: telegrambot
+        restart: unless-stopped
+        command: python /code/transmission_bot/telegram_bot.py
+        environment:
+            - ADDRESS=transmission
+            - PORT=9091
+            - TS_USER=admin
+            - PASSWORD=123456
+            - TOKEN=TELEGRAMBOTTOKEN
+            - PERSISTENCE_FILE=/var/lib/transmission-telegram/authorized_chats
+
+    networks:
+        lan:
+            driver: macvlan
+            driver_opts:
+            parent: eth0
+            ipam:
+            config:
+                - subnet: "192.168.0.0/24"
+                gateway: "192.168.0.1"
